@@ -1,4 +1,5 @@
 #include "composeappengine.h"
+#include "composeinfo.h"
 
 #include <sys/statvfs.h>
 #include <boost/process.hpp>
@@ -42,46 +43,62 @@ void ComposeAppEngine::remove(const App& app) {
 }
 
 bool ComposeAppEngine::isRunning(const App& app) const {
-  bool cmd_res{false};
-  std::string cmd_output;
-  std::tie(cmd_res, cmd_output) = cmd("cat " + (appRoot(app) / ComposeFile).string());
-  if (!cmd_res) {
-    LOG_WARNING << "Failed to parse App config: " << app.name;
-    return false;
-  }
+  try {
+    ComposeInfo compose((appRoot(app) / ComposeFile).string());
+    std::vector<Json::Value> services;
 
-  // calculate a number of container images that a given App consists of
-  std::string::size_type find_pos{0};
-  std::string::size_type line_pos{0};
-  int expected_container_number{0};
-
-  while ((find_pos = cmd_output.find("image:", line_pos)) != std::string::npos) {
-    if (cmd_output.substr(line_pos, (find_pos - line_pos)).find_first_of('#') == std::string::npos) {
-      ++expected_container_number;
+    if (!compose.getServices(services)) {
+      LOG_WARNING << "App: " << app.name << ", no services!";
+      return false;
     }
-    line_pos = cmd_output.find('\n', find_pos);
-    ++find_pos;
+
+    std::string req(
+        "ps -q --filter=status=running --filter=label=com.docker.compose.project=" + app.name +
+        R"( --format='{ "service": "{{.Label "com.docker.compose.service"}}", "hash": "{{.Label "io.compose-spec.config-hash"}}" },')");
+
+    std::string output;
+    bool ret{false};
+
+    std::tie(ret, output) = cmd(docker_ + req);
+    if (!ret || output.empty()) {
+      LOG_INFO << req;
+      exit(0);
+      return false;
+    }
+
+    // create a json array from the command output
+    std::string array("[" + output + "]");
+    std::istringstream sin(output);
+    Json::Value running;
+    sin >> running;
+
+    // for all the services in docker-compose.yml
+    std::string hash;
+    for (std::size_t i = 0; i < services.size(); i++) {
+      std::string name = services[i].asString();
+      if (!compose.getHash(services[i], hash)) {
+        LOG_WARNING << "App: " << app.name << ", service: " << name << ", no hash!";
+        return false;
+      }
+
+      // for all the app services currently running
+      bool found{false};
+      for (Json::ValueIterator ii = running.begin(); ii != running.end() && !found; ++ii) {
+        Json::Value runner = *ii;
+        if (runner["hash"].asString() == hash && runner["service"].asString() == name) {
+          found = true;
+        }
+      }
+      if (!found) {
+        LOG_WARNING << "App: " << app.name << ", service: " << name << ", not running!";
+        return false;
+      }
+    }
+    return true;
+  } catch (...) {
+    LOG_WARNING << "Can't read " << (appRoot(app) / ComposeFile).string();
   }
-
-  // Get a number of running container images
-  std::tie(cmd_res, cmd_output) =
-      cmd(docker_ + "ps -q --filter=status=running --filter=label=com.docker.compose.project=" + app.name);
-  if (!cmd_res) {
-    LOG_WARNING << "Failed to get a list of App's containers: " << app.name;
-    return false;
-  }
-
-  int running_container_number =
-      std::count_if(cmd_output.begin(), cmd_output.end(), [](const char& symbol) { return symbol == '\n'; });
-
-  if (running_container_number < expected_container_number) {
-    LOG_DEBUG << "Number of running containers is less than a number of images specified in the compose file"
-              << "; App: " << app.name << "; expected container number: " << expected_container_number
-              << "; number of running containers: " << running_container_number;
-    return false;
-  }
-
-  return true;
+  return false;
 }
 
 // Private implementation

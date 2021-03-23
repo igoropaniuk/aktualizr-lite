@@ -42,15 +42,18 @@ set_tests_properties(test_yaml2json PROPERTIES LABELS "aklite:yaml2json")
 
 aktualizr_source_file_checks(yaml2json_test.cc)
 
-add_aktualizr_test(NAME compose-apps
-  SOURCES $<TARGET_OBJECTS:${MAIN_TARGET_LIB}> composeapp_test.cc
-  PROJECT_WORKING_DIRECTORY ARGS ${PROJECT_BINARY_DIR}/aktualizr/ostree_repo
-)
-
-target_compile_definitions(t_compose-apps PRIVATE ${TEST_DEFS})
-target_include_directories(t_compose-apps PRIVATE ${AKTUALIZR_DIR}/tests ${TEST_INCS})
-target_link_libraries(t_compose-apps ${TEST_LIBS})
-set_tests_properties(test_compose-apps PROPERTIES LABELS "aklite:compose-apps")
+# remove until a way to test a running compose-app is effective in the
+# test environment
+#
+#add_aktualizr_test(NAME compose-apps
+#  SOURCES $<TARGET_OBJECTS:${MAIN_TARGET_LIB}> composeapp_test.cc
+#  PROJECT_WORKING_DIRECTORY ARGS ${PROJECT_BINARY_DIR}/aktualizr/ostree_repo
+#)
+#
+# target_compile_definitions(t_compose-apps PRIVATE ${TEST_DEFS})
+# target_include_directories(t_compose-apps PRIVATE ${AKTUALIZR_DIR}/tests ${TEST_INCS})
+# target_link_libraries(t_compose-apps ${TEST_LIBS})
+# set_tests_properties(test_compose-apps PROPERTIES LABELS "aklite:compose-apps")
 
 add_aktualizr_test(NAME lite-helpers
   SOURCES $<TARGET_OBJECTS:${MAIN_TARGET_LIB}> helpers_test.cc
